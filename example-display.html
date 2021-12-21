@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+      body {
+        margin: 0;
+        background: #dfdfdf;
+      }
+
+      .compaired-text-display--c-form {
+        padding: 1rem;
+        background: rgba(175, 175, 175);
+      }
+
+      .compaired-text-display--c-content {
+        display: flex;
+        flex-wrap: wrap;
+        line-height: 7rem;
+        margin: .5rem 0 0 .5rem;
+      }
+
+      .compaired-text-display--c-form .compaired-text-display--c-f-input {
+        float: left;
+        width: 100%;
+        margin: .5rem 0;
+        padding: .5rem;
+      }
+
+      .compaired-text-display--c-content .compaired-text-display--c-c-row {
+        position: relative;
+        min-width: 5rem;
+        padding: 1rem;
+        line-height: 1rem;
+        border-bottom: .125rem solid #545454;
+        background: white;
+        margin: 0 .5rem 2rem 0;
+        text-align: center;
+      }
+      .compaired-text-display--c-c-row:after {
+        content: "unknow";
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        width: 100%;
+        text-align: center;
+        font-size: .75rem;
+        padding: .5rem 0;
+      } .compaired-text-display--c-c-row[diff-type="added"]:after {
+        content: "hinzugefügt";
+      } .compaired-text-display--c-c-row[diff-type="removed"]:after {
+        content: "entfernt";
+      } .compaired-text-display--c-c-row[diff-type="moved"]:after {
+        content: "verschoben";
+      } .compaired-text-display--c-c-row[diff-type="replaced"]:after {
+        content: "ersetzt";
+      }
+    </style>
+  </head>
+  <body>
+    <div class="compaired-text-display--container">
+      <div class="compaired-text-display--c-form">
+        <input type="text" class="compaired-text-display--c-f-input last-version" placeholder="Old Version">
+        <input type="text" class="compaired-text-display--c-f-input cur-version" placeholder="New Version">
+
+        <button class="compaired-text-display--c-f-start-btn">Compair...</button>
+      </div>
+      <div class="compaired-text-display--c-content"></div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" crossorigin="anonymous"></script>
+    <script src="./compair-engine.js"></script>
+
+    <script>
+      function getRowOfAdd(curCompairResult) { return `
+        <div class="compaired-text-display--c-c-row" diff-type="added">
+          <p class="compaired-text-display--c-c-r-sentence version-modified"> <span style="color: transparent;">.</span> </p>
+          <p class="compaired-text-display--c-c-r-sentence version-current">
+            <span style="color: green;">${curCompairResult.curValue.value + curCompairResult.curValue.endChar}</span>
+          </p>
+        </div>`;
+      }
+      function getRowOfRemoved(curCompairResult) { return `
+        <div class="compaired-text-display--c-c-row" diff-type="removed">
+          <p class="compaired-text-display--c-c-r-sentence version-modified">
+            <span style="color: red; text-decoration: line-through;">${curCompairResult.lastValue.value + curCompairResult.lastValue.endChar}</span>
+          </p>
+          <p class="compaired-text-display--c-c-r-sentence version-current"> <span style="color: transparent;">.</span> </p>
+        </div>`;
+      }
+      function getRowOfMoved(curCompairResult) { return `
+        <div class="compaired-text-display--c-c-row" diff-type="moved">
+          <p class="compaired-text-display--c-c-r-sentence version-modified">
+            <span style="color: orange; text-decoration: line-through;">${curCompairResult.lastValue.value + curCompairResult.lastValue.endChar}</span>
+          </p>
+          <p class="compaired-text-display--c-c-r-sentence version-current">
+            <span style="color: orange;">${curCompairResult.curValue.value + curCompairResult.curValue.endChar}</span>
+          </p>
+        </div>`;
+      }
+      function getRowOfReplaced(curCompairResult) { return `
+        <div class="compaired-text-display--c-c-row" diff-type="replaced">
+          <p class="compaired-text-display--c-c-r-sentence version-modified">
+            <span style="color: red; text-decoration: line-through;">${curCompairResult.lastValue.value + curCompairResult.lastValue.endChar}</span>
+          </p>
+          <p class="compaired-text-display--c-c-r-sentence version-current"><span style="color: green;">${curCompairResult.curValue.value + curCompairResult.curValue.endChar}</span>
+          </p>
+        </div>`;
+      }
+      
+      function addTextCompairResults(str, curCompairResult) {
+        let strBeforeCurResult = str.substr(0, curCompairResult.posCurStart);
+        let strAfterCurResult = str.substr( (curCompairResult.posCurEnd)
+          ? curCompairResult.posCurEnd +1
+          : strBeforeCurResult.length -1
+        );
+
+        let usedRawConstructFn = (curCompairResult.type === "extended") ? getRowOfAdd
+                               : (curCompairResult.type === "removed") ? getRowOfRemoved
+                               : (curCompairResult.type === "moved") ? getRowOfMoved
+                               : (curCompairResult.type === "replaced") ? getRowOfReplaced
+                               : (compResObj) => { console.error("Unbekannter CompairType!", compResObj); debugger; }
+
+        return strBeforeCurResult + usedRawConstructFn(curCompairResult) + strAfterCurResult;
+      }
+      
+      function prepairResults() {
+        let lastVersionText = $('.compaired-text-display--c-f-input.last-version').val();
+        let currentVersionText = $('.compaired-text-display--c-f-input.cur-version').val();
+
+        if (!lastVersionText || !currentVersionText)
+          return false;
+
+        let lastVersionLastChar = lastVersionText[lastVersionText.length -1];
+        let curVersionLastChar = currentVersionText[currentVersionText.length -1];
+        
+        while(lastVersionLastChar === " " || curVersionLastChar === " ") {
+          if (lastVersionLastChar === " ") {
+            lastVersionText = lastVersionText.substr(0, lastVersionText.length -2);
+            lastVersionLastChar = lastVersionText[lastVersionText.length -1];
+          }
+
+          if (curVersionLastChar === " ") {
+            currentVersionText = currentVersionText.substr(0, currentVersionText.length -2);
+            curVersionLastChar = currentVersionText[currentVersionText.length -1];
+          }
+        }
+
+        if (lastVersionLastChar !== '.') lastVersionText += '.';
+        if (curVersionLastChar !== '.') currentVersionText += '.';
+
+
+        if (lastVersionText && currentVersionText) {
+          let compairResults = getTextCompair(lastVersionText, currentVersionText);
+          let descSortedResults = compairResults.sort( (resA, resB) => { // resB.posCurStart - resA.posCurStart
+            if (resB.posCurStart !== resA.posCurStart)
+              return resB.posCurStart - resA.posCurStart;
+            else // Priosierung nach 'extended' & 'removed'
+              return (resB.type === "extended" || resB.type === "removed") ? -1
+                : (resA.type === "extended" || resA.type === "removed") ? +1 : 0;
+          }); // rückwerts
+          let displayCompairResultHtml = compairResults.reduce(
+            (resultTextStr, curCompairResult) => addTextCompairResults(resultTextStr, curCompairResult),
+            currentVersionText
+          );
+
+          $('.compaired-text-display--container .compaired-text-display--c-content')[0].innerHTML = displayCompairResultHtml;
+        }
+      }
+
+      $( document ).ready( () => {
+        $('.compaired-text-display--c-f-start-btn').click( () => {
+          prepairResults();
+        });
+      });
+    </script>
+  </body>
+</html>
